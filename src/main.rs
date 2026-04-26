@@ -3,6 +3,9 @@ use clap::Parser;
 use reqwest::blocking::Client;
 use serde::Serialize;
 use std::io::{IsTerminal, Read, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::thread;
 use std::time::{Duration, Instant};
 
 const DOWN_URL: &str = "https://speed.cloudflare.com/__down";
@@ -189,8 +192,13 @@ fn measure_download(client: &Client, window: Duration, show_progress: bool) -> R
                 last_draw = Instant::now();
             }
         });
-        if let Ok(elapsed) = result {
-            samples.push(mbps(bytes, elapsed));
+        // Skip truncated responses: an early-closed connection or upstream error
+        // can yield a tiny `received` over a tiny `elapsed`, fabricating an
+        // absurd Mbps reading that poisons the percentile.
+        if let Ok((received, elapsed)) = result {
+            if received >= bytes {
+                samples.push(mbps(received, elapsed));
+            }
         }
         idx += 1;
         if show_progress {
@@ -210,7 +218,7 @@ fn download_once(
     client: &Client,
     bytes: u64,
     mut on_progress: impl FnMut(u64, Duration),
-) -> Result<Duration> {
+) -> Result<(u64, Duration)> {
     let mut resp = client
         .get(format!("{DOWN_URL}?bytes={bytes}"))
         .send()
@@ -226,7 +234,7 @@ fn download_once(
         total += n as u64;
         on_progress(total, start.elapsed());
     }
-    Ok(start.elapsed())
+    Ok((total, start.elapsed()))
 }
 
 fn measure_upload(client: &Client, window: Duration, show_progress: bool) -> Result<Vec<f64>> {
@@ -241,19 +249,35 @@ fn measure_upload(client: &Client, window: Duration, show_progress: bool) -> Res
     }
     while Instant::now() < deadline {
         let bytes = UPLOAD_SIZES[idx % UPLOAD_SIZES.len()];
-        if show_progress {
-            // Reqwest's blocking body is not streamed in a way we can hook
-            // mid-flight, so the bar can't move during the request itself.
-            // Surface the in-flight payload size so the user knows why the
-            // bar pauses on slow links.
-            draw_progress_label(
-                "Upload",
-                start.elapsed().min(window),
-                window,
-                &format!("uploading {:.1} MB", bytes as f64 / 1_000_000.0),
-            );
+        // Reqwest's blocking body finishes reading our buffer well before the
+        // socket actually drains, so a Read-side hook would underreport
+        // mid-flight. Spawn a side thread that animates the bar on a clock
+        // while `upload_once` blocks the main thread.
+        let ticker = if show_progress {
+            let stop = Arc::new(AtomicBool::new(false));
+            let label = format!("uploading {:.1} MB", bytes as f64 / 1_000_000.0);
+            let stop_clone = Arc::clone(&stop);
+            let handle = thread::spawn(move || {
+                while !stop_clone.load(Ordering::Relaxed) {
+                    draw_progress_label(
+                        "Upload",
+                        start.elapsed().min(window),
+                        window,
+                        &label,
+                    );
+                    thread::sleep(PROGRESS_TICK);
+                }
+            });
+            Some((stop, handle))
+        } else {
+            None
+        };
+        let result = upload_once(client, bytes);
+        if let Some((stop, handle)) = ticker {
+            stop.store(true, Ordering::Relaxed);
+            let _ = handle.join();
         }
-        if let Ok(elapsed) = upload_once(client, bytes) {
+        if let Ok(elapsed) = result {
             samples.push(mbps(bytes, elapsed));
         }
         idx += 1;
