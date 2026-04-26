@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use reqwest::blocking::Client;
 use serde::Serialize;
-use std::io::Read;
+use std::io::{IsTerminal, Read, Write};
 use std::time::{Duration, Instant};
 
 const DOWN_URL: &str = "https://speed.cloudflare.com/__down";
@@ -30,6 +30,8 @@ const UPLOAD_SIZES: &[u64] = &[
 const WARMUP_BYTES: u64 = 100_000;
 const DEFAULT_DURATION_SECS: u64 = 10;
 const REQUEST_TIMEOUT_SECS: u64 = 60;
+const PROGRESS_TICK: Duration = Duration::from_millis(100);
+const BAR_WIDTH: usize = 24;
 
 #[derive(Parser)]
 #[command(
@@ -84,6 +86,8 @@ fn main() -> Result<()> {
         .build()
         .context("building HTTP client")?;
     let window = Duration::from_secs(cli.duration.max(1));
+    // Progress to stderr so JSON / piped human output stays clean.
+    let show_progress = std::io::stderr().is_terminal();
 
     let (run_down, run_up) = match cli.command {
         Some(Sub::Download) => (true, false),
@@ -99,14 +103,17 @@ fn main() -> Result<()> {
     };
 
     if run_down {
-        report.latency_ms = Some(measure_latency(&client).context("measuring latency")?);
-        let mut samples = measure_download(&client, window).context("running download test")?;
+        report.latency_ms =
+            Some(measure_latency(&client, show_progress).context("measuring latency")?);
+        let mut samples =
+            measure_download(&client, window, show_progress).context("running download test")?;
         report.samples.download = Some(samples.len());
         report.download_mbps = Some(percentile(&mut samples, 0.9));
     }
 
     if run_up {
-        let mut samples = measure_upload(&client, window).context("running upload test")?;
+        let mut samples =
+            measure_upload(&client, window, show_progress).context("running upload test")?;
         report.samples.upload = Some(samples.len());
         report.upload_mbps = Some(percentile(&mut samples, 0.9));
     }
@@ -131,9 +138,12 @@ fn print_human(r: &Report) {
     }
 }
 
-fn measure_latency(client: &Client) -> Result<f64> {
-    // Three probes, take the minimum — RTT is bounded below by the link, but
-    // any single probe can be inflated by noise.
+fn measure_latency(client: &Client, show_progress: bool) -> Result<f64> {
+    if show_progress {
+        let mut err = std::io::stderr();
+        let _ = write!(err, "  Latency       measuring");
+        let _ = err.flush();
+    }
     let mut best = f64::INFINITY;
     for _ in 0..3 {
         let start = Instant::now();
@@ -147,50 +157,114 @@ fn measure_latency(client: &Client) -> Result<f64> {
         if ms < best {
             best = ms;
         }
+        if show_progress {
+            let mut err = std::io::stderr();
+            let _ = write!(err, ".");
+            let _ = err.flush();
+        }
+    }
+    if show_progress {
+        clear_line();
     }
     Ok(best)
 }
 
-fn measure_download(client: &Client, window: Duration) -> Result<Vec<f64>> {
-    // Warm-up: TCP slow-start and TLS handshake distort the first request.
-    let _ = download_once(client, WARMUP_BYTES);
+fn measure_download(client: &Client, window: Duration, show_progress: bool) -> Result<Vec<f64>> {
+    let _ = download_once(client, WARMUP_BYTES, |_, _| {});
 
     let mut samples = Vec::new();
-    let deadline = Instant::now() + window;
+    let start = Instant::now();
+    let deadline = start + window;
     let mut idx = 0;
+    let mut last_draw = Instant::now();
+    if show_progress {
+        draw_progress("Download", Duration::ZERO, window, 0.0);
+    }
     while Instant::now() < deadline {
         let bytes = DOWNLOAD_SIZES[idx % DOWNLOAD_SIZES.len()];
-        if let Ok(elapsed) = download_once(client, bytes) {
+        let result = download_once(client, bytes, |progress_bytes, req_elapsed| {
+            if show_progress && last_draw.elapsed() >= PROGRESS_TICK {
+                let inst = mbps(progress_bytes, req_elapsed);
+                draw_progress("Download", start.elapsed().min(window), window, inst);
+                last_draw = Instant::now();
+            }
+        });
+        if let Ok(elapsed) = result {
             samples.push(mbps(bytes, elapsed));
         }
         idx += 1;
+        if show_progress {
+            let mut snapshot = samples.clone();
+            let p90 = percentile(&mut snapshot, 0.9);
+            draw_progress("Download", start.elapsed().min(window), window, p90);
+            last_draw = Instant::now();
+        }
+    }
+    if show_progress {
+        clear_line();
     }
     Ok(samples)
 }
 
-fn download_once(client: &Client, bytes: u64) -> Result<Duration> {
-    let start = Instant::now();
+fn download_once(
+    client: &Client,
+    bytes: u64,
+    mut on_progress: impl FnMut(u64, Duration),
+) -> Result<Duration> {
     let mut resp = client
         .get(format!("{DOWN_URL}?bytes={bytes}"))
         .send()
         .context("GET __down")?;
-    let mut sink = Vec::with_capacity(bytes as usize);
-    resp.read_to_end(&mut sink).context("reading download body")?;
+    let start = Instant::now();
+    let mut buf = [0u8; 64 * 1024];
+    let mut total = 0u64;
+    loop {
+        let n = resp.read(&mut buf).context("reading download body")?;
+        if n == 0 {
+            break;
+        }
+        total += n as u64;
+        on_progress(total, start.elapsed());
+    }
     Ok(start.elapsed())
 }
 
-fn measure_upload(client: &Client, window: Duration) -> Result<Vec<f64>> {
+fn measure_upload(client: &Client, window: Duration, show_progress: bool) -> Result<Vec<f64>> {
     let _ = upload_once(client, WARMUP_BYTES);
 
     let mut samples = Vec::new();
-    let deadline = Instant::now() + window;
+    let start = Instant::now();
+    let deadline = start + window;
     let mut idx = 0;
+    if show_progress {
+        draw_progress("Upload", Duration::ZERO, window, 0.0);
+    }
     while Instant::now() < deadline {
         let bytes = UPLOAD_SIZES[idx % UPLOAD_SIZES.len()];
+        if show_progress {
+            // Reqwest's blocking body is not streamed in a way we can hook
+            // mid-flight, so the bar can't move during the request itself.
+            // Surface the in-flight payload size so the user knows why the
+            // bar pauses on slow links.
+            draw_progress_label(
+                "Upload",
+                start.elapsed().min(window),
+                window,
+                &format!("uploading {:.1} MB", bytes as f64 / 1_000_000.0),
+            );
+        }
         if let Ok(elapsed) = upload_once(client, bytes) {
             samples.push(mbps(bytes, elapsed));
         }
         idx += 1;
+        if show_progress {
+            let mut snapshot = samples.clone();
+            let p90 = percentile(&mut snapshot, 0.9);
+            draw_progress("Upload", start.elapsed().min(window), window, p90);
+        }
+    }
+    if show_progress {
+        clear_line();
     }
     Ok(samples)
 }
@@ -234,6 +308,31 @@ fn percentile(samples: &mut [f64], p: f64) -> f64 {
         let frac = rank - lo as f64;
         samples[lo] + (samples[hi] - samples[lo]) * frac
     }
+}
+
+fn draw_progress(label: &str, elapsed: Duration, window: Duration, mbps_value: f64) {
+    draw_progress_label(label, elapsed, window, &format!("{mbps_value:>7.1} Mbps"));
+}
+
+fn draw_progress_label(label: &str, elapsed: Duration, window: Duration, trailing: &str) {
+    let frac = (elapsed.as_secs_f64() / window.as_secs_f64().max(0.001)).min(1.0);
+    let filled = (frac * BAR_WIDTH as f64).round() as usize;
+    let filled = filled.min(BAR_WIDTH);
+    let bar: String = "=".repeat(filled) + &" ".repeat(BAR_WIDTH - filled);
+    let mut err = std::io::stderr();
+    // Trailing spaces pad over residue from longer prior strings.
+    let _ = write!(
+        err,
+        "\r  {label:<10} [{bar}] {:>4.1}s  {trailing}      ",
+        elapsed.as_secs_f64(),
+    );
+    let _ = err.flush();
+}
+
+fn clear_line() {
+    let mut err = std::io::stderr();
+    let _ = write!(err, "\r\x1b[K");
+    let _ = err.flush();
 }
 
 #[cfg(test)]
