@@ -1,0 +1,16 @@
+[plugin]
+name = "fledge-plugin-speedtest"
+version = "0.1.0"
+description = "Measure download and upload bandwidth via Cloudflare. Built in Rust."
+author = "0xLeif"
+license = "MIT"
+
+[[commands]]
+name = "speedtest"
+description = "Measure network download and upload throughput"
+binary = "target/release/fledge-speedtest"
+
+[capabilities]
+exec = false
+store = false
+metadata = false

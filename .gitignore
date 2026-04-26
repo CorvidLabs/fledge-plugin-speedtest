@@ -1,0 +1,14 @@
+# Build artifacts
+target/
+dist/
+build/
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+bin/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
