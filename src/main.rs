@@ -16,19 +16,9 @@ const UP_URL: &str = "https://speed.cloudflare.com/__up";
 /// on fast links. We rotate through the list, repeating until --duration is up.
 /// Upload sizes are capped lower because Cloudflare's `__up` endpoint resets
 /// the connection on very large bodies.
-const DOWNLOAD_SIZES: &[u64] = &[
-    100_000,
-    1_000_000,
-    10_000_000,
-    25_000_000,
-    100_000_000,
-];
+const DOWNLOAD_SIZES: &[u64] = &[100_000, 1_000_000, 10_000_000, 25_000_000, 100_000_000];
 
-const UPLOAD_SIZES: &[u64] = &[
-    100_000,
-    1_000_000,
-    10_000_000,
-];
+const UPLOAD_SIZES: &[u64] = &[100_000, 1_000_000, 10_000_000];
 
 const WARMUP_BYTES: u64 = 100_000;
 const DEFAULT_DURATION_SECS: u64 = 10;
@@ -155,7 +145,8 @@ fn measure_latency(client: &Client, show_progress: bool) -> Result<f64> {
             .send()
             .context("latency probe")?;
         let mut sink = Vec::new();
-        resp.read_to_end(&mut sink).context("draining latency probe")?;
+        resp.read_to_end(&mut sink)
+            .context("draining latency probe")?;
         let ms = start.elapsed().as_secs_f64() * 1000.0;
         if ms < best {
             best = ms;
@@ -259,12 +250,7 @@ fn measure_upload(client: &Client, window: Duration, show_progress: bool) -> Res
             let stop_clone = Arc::clone(&stop);
             let handle = thread::spawn(move || {
                 while !stop_clone.load(Ordering::Relaxed) {
-                    draw_progress_label(
-                        "Upload",
-                        start.elapsed().min(window),
-                        window,
-                        &label,
-                    );
+                    draw_progress_label("Upload", start.elapsed().min(window), window, &label);
                     thread::sleep(PROGRESS_TICK);
                 }
             });
