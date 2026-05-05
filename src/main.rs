@@ -418,4 +418,124 @@ mod tests {
         assert_eq!(v["samples"]["download"], 7);
         assert!(v["samples"].get("upload").is_none());
     }
+
+    #[test]
+    fn report_json_full_fields() {
+        let r = Report {
+            latency_ms: Some(5.0),
+            download_mbps: Some(500.0),
+            upload_mbps: Some(100.0),
+            samples: SampleCounts {
+                download: Some(12),
+                upload: Some(8),
+            },
+        };
+        let json_str = serde_json::to_string(&r).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(v["latency_ms"], 5.0);
+        assert_eq!(v["download_mbps"], 500.0);
+        assert_eq!(v["upload_mbps"], 100.0);
+        assert_eq!(v["samples"]["download"], 12);
+        assert_eq!(v["samples"]["upload"], 8);
+    }
+
+    #[test]
+    fn report_json_empty_report() {
+        let r = Report {
+            latency_ms: None,
+            download_mbps: None,
+            upload_mbps: None,
+            samples: SampleCounts::default(),
+        };
+        let v: serde_json::Value = serde_json::to_value(&r).unwrap();
+        assert!(v.get("latency_ms").is_none());
+        assert!(v.get("download_mbps").is_none());
+        assert!(v.get("upload_mbps").is_none());
+        assert!(v["samples"].get("download").is_none());
+        assert!(v["samples"].get("upload").is_none());
+    }
+
+    #[test]
+    fn mbps_large_transfer() {
+        // 100 MB in 1 second = 800 Mbps
+        let r = mbps(100_000_000, Duration::from_secs(1));
+        assert!((r - 800.0).abs() < 1e-9, "got {r}");
+    }
+
+    #[test]
+    fn mbps_very_small_elapsed() {
+        // 1 byte in 1 microsecond => should be a finite number, not panic
+        let r = mbps(1, Duration::from_micros(1));
+        assert!(r.is_finite());
+        assert!(r > 0.0);
+    }
+
+    #[test]
+    fn percentile_p0_gives_minimum() {
+        let mut s = vec![10.0, 20.0, 30.0, 40.0, 50.0];
+        assert_eq!(percentile(&mut s, 0.0), 10.0);
+    }
+
+    #[test]
+    fn percentile_p50_gives_median() {
+        let mut s = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+        // rank = 0.5 * 4 = 2.0 → samples[2] = 3.0
+        assert_eq!(percentile(&mut s, 0.5), 3.0);
+    }
+
+    #[test]
+    fn percentile_p100_gives_maximum() {
+        let mut s = vec![10.0, 20.0, 30.0, 40.0, 50.0];
+        assert_eq!(percentile(&mut s, 1.0), 50.0);
+    }
+
+    #[test]
+    fn percentile_two_values_interpolates() {
+        let mut s = vec![100.0, 200.0];
+        // rank = 0.5 * 1 = 0.5, lo=0 hi=1, frac=0.5
+        // result = 100 + (200-100)*0.5 = 150
+        let r = percentile(&mut s, 0.5);
+        assert!((r - 150.0).abs() < 1e-9, "got {r}");
+    }
+
+    #[test]
+    fn duration_window_minimum_is_one_second() {
+        // Mirrors the logic `cli.duration.max(1)` ensuring 0 becomes 1
+        let user_input: u64 = 0;
+        let window = Duration::from_secs(user_input.max(1));
+        assert_eq!(window, Duration::from_secs(1));
+    }
+
+    #[test]
+    fn duration_window_preserves_nonzero() {
+        let user_input: u64 = 15;
+        let window = Duration::from_secs(user_input.max(1));
+        assert_eq!(window, Duration::from_secs(15));
+    }
+
+    #[test]
+    fn progress_fraction_calculation() {
+        // The progress fraction logic from draw_progress_label
+        let elapsed = Duration::from_secs(5);
+        let window = Duration::from_secs(10);
+        let frac = (elapsed.as_secs_f64() / window.as_secs_f64().max(0.001)).min(1.0);
+        assert!((frac - 0.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn progress_fraction_clamps_at_one() {
+        let elapsed = Duration::from_secs(12);
+        let window = Duration::from_secs(10);
+        let frac = (elapsed.as_secs_f64() / window.as_secs_f64().max(0.001)).min(1.0);
+        assert_eq!(frac, 1.0);
+    }
+
+    #[test]
+    fn progress_fraction_zero_window_uses_fallback() {
+        // If window were somehow 0, max(0.001) prevents division by zero
+        let elapsed = Duration::from_secs(1);
+        let window = Duration::from_secs(0);
+        let frac = (elapsed.as_secs_f64() / window.as_secs_f64().max(0.001)).min(1.0);
+        assert_eq!(frac, 1.0); // 1.0 / 0.001 = 1000, clamped to 1.0
+    }
 }
