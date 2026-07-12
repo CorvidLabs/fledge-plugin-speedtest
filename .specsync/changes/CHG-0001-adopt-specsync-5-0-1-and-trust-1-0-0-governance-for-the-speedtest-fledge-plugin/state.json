@@ -26,12 +26,7 @@
   "no_spec_change": false,
   "no_spec_change_rationale": null,
   "acceptance_criteria": [
-    "SpecSync strict coverage is 100%; all four integrations are installed; Trust doctor and verification pass; formatting",
-    "Clippy",
-    "22 calculation/report tests",
-    "release build",
-    "help smoke",
-    "and cross-platform hosted builds remain green."
+    "SpecSync strict coverage is 100%; all four integrations are installed; Trust doctor and verification pass; formatting, Clippy, 22 calculation/report tests, release build, help smoke, and cross-platform hosted builds remain green."
   ],
   "selected_artifacts": [
     "context",
