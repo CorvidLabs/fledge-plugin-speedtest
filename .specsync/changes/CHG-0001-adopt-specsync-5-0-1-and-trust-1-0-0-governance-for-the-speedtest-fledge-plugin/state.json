@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "id": "CHG-0001-adopt-specsync-5-0-1-and-trust-1-0-0-governance-for-the-speedtest-fledge-plugin",
+  "slug": "adopt-specsync-5-0-1-and-trust-1-0-0-governance-for-the-speedtest-fledge-plugin",
+  "title": "Adopt SpecSync 5.0.1 and Trust 1.0.0 governance for the Speedtest Fledge plugin",
+  "description": "Adopt SpecSync 5.0.1 and Trust 1.0.0 governance for the Speedtest Fledge plugin",
+  "kind": "migration",
+  "state": "draft",
+  "base_commit": "fc904d508cefaecf6e69bda7416bb62d4912d352",
+  "created_at": 1783882816,
+  "updated_at": 1783882822,
+  "affected_specs": [
+    "speedtest"
+  ],
+  "affected_paths": [
+    "src/",
+    "Cargo.toml",
+    "Cargo.lock",
+    "plugin.toml",
+    "fledge.toml",
+    ".github/",
+    ".specsync/",
+    "specs/",
+    ".trust.toml"
+  ],
+  "no_spec_change": false,
+  "no_spec_change_rationale": null,
+  "acceptance_criteria": [
+    "SpecSync strict coverage is 100%; all four integrations are installed; Trust doctor and verification pass; formatting",
+    "Clippy",
+    "22 calculation/report tests",
+    "release build",
+    "help smoke",
+    "and cross-platform hosted builds remain green."
+  ],
+  "selected_artifacts": [
+    "context",
+    "research",
+    "design",
+    "plan",
+    "tasks",
+    "testing",
+    "docs"
+  ],
+  "dependencies": [],
+  "answers": {
+    "architecture_risk": "yes",
+    "public_contract": "no"
+  }
+}
