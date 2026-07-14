@@ -4,7 +4,7 @@ build = "cargo build --release"
 test = "cargo test"
 lint = "cargo clippy -- -D warnings"
 fmt = "cargo fmt --check"
-smoke = "./target/release/fledge-speedtest --help >/dev/null"
+smoke = "cargo run --release -- --help"
 
 [lanes.verify]
 description = "Format, lint, test, build, and smoke-test the speedtest plugin"

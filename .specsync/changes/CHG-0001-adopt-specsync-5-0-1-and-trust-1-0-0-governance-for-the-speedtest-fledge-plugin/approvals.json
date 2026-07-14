@@ -1,3 +1,12 @@
 {
-  "approvals": []
+  "approvals": [
+    {
+      "gate": "definition",
+      "actor": "user:0xLeif",
+      "timestamp": 1783987290,
+      "digest": "cea8a322db10e3519fbbd2ab72a9d2976e0be22f1c6b746422dea6ba63ef5bbf",
+      "note": "Approved the audited migration definition with five truthful requirement mappings, portable native verification, complete governance path coverage, and no product-code changes."
+    }
+  ],
+  "reopenings": []
 }
