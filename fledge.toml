@@ -4,3 +4,8 @@ build = "cargo build --release"
 test = "cargo test"
 lint = "cargo clippy -- -D warnings"
 fmt = "cargo fmt --check"
+smoke = "cargo run --release -- --help"
+
+[lanes.verify]
+description = "Format, lint, test, build, and smoke-test the speedtest plugin"
+steps = ["fmt", "lint", "test", "build", "smoke"]

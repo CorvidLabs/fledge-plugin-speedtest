@@ -1,0 +1,5 @@
+[registry]
+name = "fledge-plugin-speedtest-trust-wave6"
+
+[specs]
+speedtest = "specs/speedtest/speedtest.spec.md"

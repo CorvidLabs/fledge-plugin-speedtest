@@ -8,6 +8,17 @@ on:
       - Cargo.toml
       - Cargo.lock
       - .github/workflows/ci.yml
+      - .github/workflows/trust.yml
+      - .specsync/**
+      - specs/**
+      - .trust.toml
+      - .augur.toml
+      - .attest.json
+      - fledge.toml
+      - plugin.toml
+      - README.md
+      - CHANGELOG.md
+      - docs/**
   pull_request:
     branches: [main]
     paths:
@@ -15,6 +26,17 @@ on:
       - Cargo.toml
       - Cargo.lock
       - .github/workflows/ci.yml
+      - .github/workflows/trust.yml
+      - .specsync/**
+      - specs/**
+      - .trust.toml
+      - .augur.toml
+      - .attest.json
+      - fledge.toml
+      - plugin.toml
+      - README.md
+      - CHANGELOG.md
+      - docs/**
 
 env:
   CARGO_TERM_COLOR: always
