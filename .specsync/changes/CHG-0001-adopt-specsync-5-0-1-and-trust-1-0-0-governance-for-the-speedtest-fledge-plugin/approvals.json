@@ -6,6 +6,13 @@
       "timestamp": 1783987290,
       "digest": "cea8a322db10e3519fbbd2ab72a9d2976e0be22f1c6b746422dea6ba63ef5bbf",
       "note": "Approved the audited migration definition with five truthful requirement mappings, portable native verification, complete governance path coverage, and no product-code changes."
+    },
+    {
+      "gate": "acceptance",
+      "actor": "user:0xLeif",
+      "timestamp": 1783987354,
+      "digest": "4b9dc512b51461703a48b2eb6ee34185bbd61959b82bc7fe9ff9f9fe683e84be",
+      "note": "Closing approval after exact-head native verification passed with all five Speedtest requirement IDs, portable smoke coverage, and real 100% source coverage."
     }
   ],
   "reopenings": []

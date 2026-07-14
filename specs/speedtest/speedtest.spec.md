@@ -1,6 +1,6 @@
 ---
 module: speedtest
-version: 1
+version: 2
 status: active
 files:
   - src/main.rs
@@ -65,3 +65,4 @@ Then the plugin reports sample counts and the computed latency or throughput in 
 | Version | Date | Changes |
 |---------|------|---------|
 | 1 | 2026-07-12 | Document existing bounded latency and throughput measurement behavior for SpecSync 5 adoption. |
+| 2 | 2026-07-14 | CHG-0001-adopt-specsync-5-0-1-and-trust-1-0-0-governance-for-the-speedtest-fledge-plugin: Adopt SpecSync 5.0.1 and Trust 1.0.0 governance for the Speedtest Fledge plugin |
